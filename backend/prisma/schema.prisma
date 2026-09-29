@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductCategory {
+  ELECTRONICS
+  APPAREL
+  HOME
+  DIGITAL
+  PERSONAL_CARE
+}
+
+enum OrderStatus {
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+// Refund state of the order itself.
+enum RefundStatus {
+  NONE
+  PENDING
+  REFUNDED
+}
+
+enum RefundDecision {
+  APPROVED
+  DENIED
+  ESCALATED
+}
+
+enum MessageRole {
+  CUSTOMER
+  ASSISTANT
+}
+
+model Customer {
+  id            Int                   @id @default(autoincrement())
+  name          String
+  email         String                @unique
+  phone         String?
+  country       String
+  createdAt     DateTime              @default(now())
+  orders        Order[]
+  refundRequests RefundRequest[]
+  conversations SupportConversation[]
+}
+
+model Product {
+  id          Int             @id @default(autoincrement())
+  sku         String          @unique
+  name        String
+  category    ProductCategory
+  priceCents  Int
+  isFinalSale Boolean         @default(false)
+  orderItems  Order[]
+}
+
+model Order {
+  id             Int             @id @default(autoincrement())
+  orderNumber    String          @unique
+  customerId     Int
+  customer       Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId      Int
+  product        Product         @relation(fields: [productId], references: [id])
+  amountCents    Int
+  status         OrderStatus
+  refundStatus   RefundStatus    @default(NONE)
+  orderedAt      DateTime
+  deliveredAt    DateTime?
+  refundRequests RefundRequest[]
+
+  @@index([customerId])
+  @@index([productId])
+}
+
+model RefundRequest {
+  id                   Int            @id @default(autoincrement())
+  customerId           Int
+  customer             Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId              Int
+  order                Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  reason               String
+  requestedAmountCents Int
+  decision             RefundDecision
+  ruleCode             String // machine-readable rule that produced the decision
+  decisionReason       String // deterministic, human-readable rationale
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([decision])
+}
+
+model SupportConversation {
+  id         Int              @id @default(autoincrement())
+  customerId Int
+  customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+  messages   SupportMessage[]
+
+  @@index([customerId])
+}
+
+model SupportMessage {
+  id             Int                 @id @default(autoincrement())
+  conversationId Int
+  conversation   SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  flagged        Boolean             @default(false) // true when injection heuristics matched
+  createdAt      DateTime            @default(now())
+
+  @@index([conversationId])
+}
